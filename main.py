@@ -6,10 +6,10 @@ from pydantic import BaseModel
 
 app = FastAPI(title="CodeMap AI - Codebase Intelligence Engine")
 
-# Enable CORS so your TypeScript/Next.js frontend can talk to your Python backend
+# Fully open CORS policy to bypass strict local browser connection filters
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows communication from any local development frontend port
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,8 +28,9 @@ def analyze_structure(request: RepoRequest):
     Recursively scans a target directory path to map file architecture
     and extract internal module dependency patterns.
     """
-    # Clean up and normalize the user input path
-    target_path = os.path.abspath(request.path.strip())
+    # Clean up and normalize the user input path for Windows systems
+    raw_path = request.path.replace('"', '').replace("'", "").strip()
+    target_path = os.path.normpath(raw_path)
     
     if not os.path.exists(target_path):
         raise HTTPException(status_code=400, detail="Provided directory path does not exist.")
@@ -41,7 +42,7 @@ def analyze_structure(request: RepoRequest):
     
     # Walk through the codebase directory tree structure
     for root, dirs, files in os.walk(target_path):
-        # Strictly ignore standard configuration, dependency, and tracking folders
+        # Ignore configuration, dependency, and tracking folders
         if any(ignored in root for ignored in ['.git', 'node_modules', '__pycache__', 'bob_sessions', '.next', 'dist', 'env', 'venv']):
             continue
             
@@ -52,7 +53,8 @@ def analyze_structure(request: RepoRequest):
         # Only parse actual source development files
         valid_files = [f for f in files if f.endswith(('.py', '.js', '.ts', '.jsx', '.tsx'))]
         if valid_files:
-            repo_map["directory_tree"][relative_root] = valid_files
+            clean_folder_key = relative_root.replace("\\", "/")
+            repo_map["directory_tree"][clean_folder_key] = valid_files
         
         # Analyze imports inside Python files using Abstract Syntax Trees (AST)
         for file in files:
@@ -76,7 +78,6 @@ def analyze_structure(request: RepoRequest):
                                     "type": "from_import"
                                 })
                 except Exception:
-                    # Gracefully skip individual files that fail parsing boundaries due to syntax
                     continue
 
     return repo_map
