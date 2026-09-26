@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CodeMap AI — Python FastAPI Backend
+# Build context: repository root
+# ─────────────────────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS base
+
+# Keeps Python from buffering stdout/stderr so logs stream in real time
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# ── Dependency layer (cached separately from source code) ─────────────────────
+COPY requirements.txt ./
+RUN pip install --upgrade pip \
+ && pip install -r requirements.txt
+
+# ── Application source ────────────────────────────────────────────────────────
+COPY main.py generator.py ./
+
+# The backend scans arbitrary filesystem paths supplied by the UI.
+# The host workspace is mounted at /workspace at runtime via docker-compose.
+# No source paths are baked into the image.
+
+EXPOSE 8000
+
+# Bind to 0.0.0.0 so Docker's internal network can reach the service.
+# Reload is disabled in production — set RELOAD=true locally if preferred.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

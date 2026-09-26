@@ -1,0 +1,80 @@
+# =============================================================================
+# CodeMap AI — Multi-Container Sandbox Environment
+# =============================================================================
+#
+# QUICK START (single command):
+#   docker compose up --build
+#
+# Services:
+#   backend   → FastAPI engine           → http://localhost:8000
+#   frontend  → Next.js cockpit          → http://localhost:3000
+#
+# The host workspace root is mounted into the backend container at /workspace
+# so the AI engine can scan local filesystem paths supplied through the UI.
+#
+# To point the scanner at your repo from the UI, enter the container path:
+#   /workspace   (maps to the repository root on your machine)
+# =============================================================================
+
+services:
+
+  # ── Python FastAPI Intelligence Engine ──────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: codemap-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Override these via a .env file or shell exports before running.
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    volumes:
+      # Mount the entire workspace so the scanner can traverse it at /workspace.
+      # The container path /workspace matches what you type in the UI input.
+      - type: bind
+        source: .
+        target: /workspace
+        read_only: true
+    networks:
+      - codemap-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Next.js Cockpit Frontend ─────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        # Tells Next.js rewrites to proxy API calls through the Docker-internal
+        # service name rather than localhost (which would not resolve in-container).
+        BACKEND_URL: http://backend:8000
+    container_name: codemap-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - codemap-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+# ── Shared Internal Network ───────────────────────────────────────────────────
+networks:
+  codemap-net:
+    driver: bridge
+    name: codemap-net
